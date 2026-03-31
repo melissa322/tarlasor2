@@ -1,20 +1,8 @@
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
-import Groq from "groq-sdk";
 import { supabase } from "./supabaseClient";
 // Background image'ı lazy load için
 const tarlaAi = "./assets/tarla_ai.png";
 
-// Groq client'ı singleton olarak tanımla
-let groqClient = null;
-const getGroqClient = () => {
-  if (!groqClient) {
-    groqClient = new Groq({
-      apiKey: import.meta.env.VITE_GROQ_API_KEY,
-      dangerouslyAllowBrowser: true,
-    });
-  }
-  return groqClient;
-};
 
 const BOLGELER = {
   "Marmara": ["İstanbul", "Bursa", "Kocaeli", "Balıkesir", "Tekirdağ", "Çanakkale", "Edirne", "Kırklareli", "Sakarya", "Yalova", "Bilecik"],
@@ -778,35 +766,27 @@ Lütfen SADECE JSON formatında yanıt ver:
 }`;
     }
 
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-    const groqCreateWithRetry = async () => {
-      const attempts = 3;
-      let lastErr = null;
-      for (let i = 0; i < attempts; i++) {
-        try {
-          return await getGroqClient().chat.completions.create({
-            messages: [{ role: "user", content: prompt }],
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.3,
-          });
-        } catch (e) {
-          lastErr = e;
-          if (i < attempts - 1) {
-            await sleep(600 * Math.pow(2, i));
-            continue;
-          }
-        }
-      }
-      throw lastErr;
-    };
-
+    
     try {
-      const completion = await groqCreateWithRetry();
-      const text = completion.choices[0]?.message?.content || "";
+      // Direkt OpenAI API kullan
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.3,
+        })
+      });
+      
+      const data = await response.json();
+      const text = data.choices[0]?.message?.content || "";
       const clean = text.replace(/```json|```/g, "").trim();
-      const data = JSON.parse(clean);
-      setSonuc(data);
+      const result = JSON.parse(clean);
+      setSonuc(result);
       
       // Geçmişe Kaydet
       if (kullanici) {
@@ -816,7 +796,7 @@ Lütfen SADECE JSON formatında yanıt ver:
           analizTur: analiz === "toprak" ? "Toprak" : analiz === "su" ? "Su" : "Hastalık",
           tarih: yeniTarih, 
           metin, 
-          sonuc: data 
+          sonuc: result 
         };
         const yeniGecmis = [kayit, ...gecmis];
         setGecmis(yeniGecmis);
@@ -827,37 +807,8 @@ Lütfen SADECE JSON formatında yanıt ver:
       setEkran("sonuc");
     } catch (err) {
       console.error("API Hatası:", err);
-      // Groq çalışmazsa OpenAI ile dene
-      if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
-        try {
-          // OpenAI API çağrısı buraya gelecek
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-              model: 'gpt-3.5-turbo',
-              messages: [{ role: "user", content: prompt }],
-              temperature: 0.3,
-            })
-          });
-          
-          const data = await response.json();
-          const text = data.choices[0]?.message?.content || "";
-          const clean = text.replace(/```json|```/g, "").trim();
-          const result = JSON.parse(clean);
-          setSonuc(result);
-          setEkran("sonuc");
-        } catch (openaiErr) {
-          setHata("AI hizmetleri şu an ulaşılabilir değil. Lütfen daha sonra tekrar deneyin.");
-          setEkran("anasayfa");
-        }
-      } else {
-        setHata("Analiz sırasında hata oluştu. Lütfen tekrar deneyin.");
-        setEkran("anasayfa");
-      }
+      setHata("AI hizmetleri şu an ulaşılabilir değil. Lütfen daha sonra tekrar deneyin.");
+      setEkran("anasayfa");
     } finally {
       setYukleniyor(false);
     }
