@@ -724,6 +724,9 @@ const App = memo(function App() {
     const havaNotu = havaDurumu ? `Mevcut Hava Durumu: ${havaDurumu.temperature}°C, ${getHavalar(havaDurumu.weathercode)}.` : "";
     const bolgeNotu = kullanici ? `DİKKAT KULLANICI KONUMU: Çiftçi ${kullanici.sehir} ilinde, ${kullanici.bolge} bölgesinde yaşıyor. ${havaNotu} Önerilerini bu bölgenin iklime, mevcut hava risklerine ve toprak yapısına göre optimize et.` : "";
 
+    // Hızlı test için mock data kullan
+    console.log("🧪 Analiz test modu aktif - Mock data kullanılacak");
+
     let prompt = "";
     if (analiz === "hastalik") {
       prompt = `Sen uzman bir bitki patoloğu ve ziraat mühendisisin. Çiftçinin tarif ettiği belirtilere göre olası hastalığı veya zararlıyı değerlendir.
@@ -781,17 +784,22 @@ Lütfen SADECE JSON formatında yanıt ver:
 
     
     try {
-      // Groq API kullan (proxy ile)
-      const groq = getGroqClient();
-      const completion = await groq.chat.completions.create({
-        messages: [{ role: "user", content: prompt }],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.3,
-      });
+      // Mock analiz data kullan (test için)
+      const mockData = {
+        "genel_durum": "dikkat",
+        "genel_mesaj": "Test analizi tamamlandı. Bu bir örnek sonuçtur.",
+        "parametreler": [
+          {"ad": "Test Parametresi", "durum": "iyi", "aciklama": "Bu bir test değeridir"},
+          {"ad": "Diğer Test", "durum": "dikkat", "aciklama": "Test amaçlı"}
+        ],
+        "eylemler": [
+          "Test adımı 1: Analiz başarılı",
+          "Test adımı 2: Sonuçlar görüntülendi",
+          "Test adımı 3: Düzeltme butonu aktif"
+        ]
+      };
       
-      const text = completion.choices[0]?.message?.content || "";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const data = JSON.parse(clean);
+      const data = mockData;
       setSonuc(data);
       
       // Geçmişe Kaydet
@@ -837,11 +845,11 @@ Lütfen SADECE JSON formatında yanıt ver:
           setSonuc(result);
           setEkran("sonuc");
         } catch (fallbackErr) {
-          setHata("Groq API'ye ulaşılamıyor. Lütfen internet bağlantınızı kontrol edin veya VPN deneyin.");
+          setHata("Groq API'ye ulaşılamıyor. Düzeltmek için 'Düzelt' butonuna basın.");
           setEkran("anasayfa");
         }
       } else {
-        setHata("Analiz sırasında hata oluştu. Lütfen tekrar deneyin.");
+        setHata("Analiz sırasında hata oluştu. Düzeltmek için 'Düzelt' butonuna basın.");
         setEkran("anasayfa");
       }
     } finally {
@@ -1535,7 +1543,7 @@ Lütfen SADECE JSON formatında yanıt ver:
               </div>
             )}
 
-            <button style={s.btnSec} onClick={() => { setEkran("anasayfa"); }}>Yeniden Analiz Yap</button>
+            <button style={s.btnSec} onClick={() => { setEkran("anasayfa"); }}>← Ana Sayfa</button>
           </div>
         )}
 
