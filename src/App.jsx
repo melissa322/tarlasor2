@@ -1,43 +1,19 @@
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
-// import Groq from "groq-sdk"; // Geçici devre dışı
+import Groq from "groq-sdk";
 import { supabase } from "./supabaseClient";
 // Background image'ı lazy load için
 const tarlaAi = "./assets/tarla_ai.png";
 
-// Mock analiz fonksiyonu (Groq yerine)
-const mockAnaliz = (analiz, metin, labMetin) => {
-  if (analiz === "hastalik") {
-    return {
-      "genel_durum": "dikkat",
-      "genel_mesaj": "Belirtileriniz fungal enfeksiyonu işaret ediyor olabilir.",
-      "parametreler": [
-        {"ad": "Olası teşhis", "durum": "dikkat", "aciklama": "Yapraklarda sararma ve leklenme"},
-        {"ad": "Ayırıcı tanı", "durum": "dikkat", "aciklama": "Böcek zararı veya besin eksikliği"}
-      ],
-      "eylemler": [
-        "Acil adım: Etkilenen yaprakları temizle",
-        "Önleme: Havalandırmayı artır, sulama düzenle",
-        "İlaçsız: Süt suyu spreyi dene",
-        "Kimyasal: Bakır ilacı kullan",
-        "İzleme: 3 gün sonra kontrol et"
-      ]
-    };
-  } else {
-    return {
-      "genel_durum": "dikkat", 
-      "genel_mesaj": "Toprak pH değeri biraz yüksek görünüyor.",
-      "parametreler": [
-        {"ad": "pH", "durum": "dikkat", "aciklama": "7.5 - ideal 6.5-7.0 arası"},
-        {"ad": "Organik madde", "durum": "iyi", "aciklama": "Yeterli seviyede"}
-      ],
-      "eylemler": [
-        "Acil: Turba veya kompost ekle",
-        "Düzeltme: 2-3 hafta içinde tekrar test et", 
-        "Önleme: Organik gübre kullanmaya devam",
-        "Takip: pH değerini ayda bir kontrol et"
-      ]
-    };
+// Groq client'ı singleton olarak tanımla
+let groqClient = null;
+const getGroqClient = () => {
+  if (!groqClient) {
+    groqClient = new Groq({
+      apiKey: import.meta.env.VITE_GROQ_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
   }
+  return groqClient;
 };
 
 const BOLGELER = {
@@ -826,8 +802,10 @@ Lütfen SADECE JSON formatında yanıt ver:
     };
 
     try {
-      // Mock analiz kullan (Groq yerine)
-      const data = mockAnaliz(analiz, metin, labMetin);
+      const completion = await groqCreateWithRetry();
+      const text = completion.choices[0]?.message?.content || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const data = JSON.parse(clean);
       setSonuc(data);
       
       // Geçmişe Kaydet
@@ -848,9 +826,38 @@ Lütfen SADECE JSON formatında yanıt ver:
       
       setEkran("sonuc");
     } catch (err) {
-      console.error("Analiz Hatası:", err);
-      setHata("Analiz sırasında hata oluştu. Lütfen tekrar deneyin.");
-      setEkran("anasayfa");
+      console.error("API Hatası:", err);
+      // Groq çalışmazsa OpenAI ile dene
+      if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
+        try {
+          // OpenAI API çağrısı buraya gelecek
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-3.5-turbo',
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.3,
+            })
+          });
+          
+          const data = await response.json();
+          const text = data.choices[0]?.message?.content || "";
+          const clean = text.replace(/```json|```/g, "").trim();
+          const result = JSON.parse(clean);
+          setSonuc(result);
+          setEkran("sonuc");
+        } catch (openaiErr) {
+          setHata("AI hizmetleri şu an ulaşılabilir değil. Lütfen daha sonra tekrar deneyin.");
+          setEkran("anasayfa");
+        }
+      } else {
+        setHata("Analiz sırasında hata oluştu. Lütfen tekrar deneyin.");
+        setEkran("anasayfa");
+      }
     } finally {
       setYukleniyor(false);
     }
