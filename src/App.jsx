@@ -1,7 +1,20 @@
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
+import Groq from "groq-sdk";
 import { supabase } from "./supabaseClient";
 // Background image'ı lazy load için
 const tarlaAi = "./assets/tarla_ai.png";
+
+// Groq client'ı proxy ile tanımla
+const getGroqClient = () => {
+  return new Groq({
+    apiKey: import.meta.env.VITE_GROQ_API_KEY,
+    dangerouslyAllowBrowser: true,
+    // CORS proxy kullanarak Türkiye'de çalışacak
+    baseURL: import.meta.env.DEV ? 
+      undefined : 
+      'https://cors-anywhere.herokuapp.com/https://api.groq.com/openai/v1'
+  });
+};
 
 
 const BOLGELER = {
@@ -768,25 +781,18 @@ Lütfen SADECE JSON formatında yanıt ver:
 
     
     try {
-      // Direkt OpenAI API kullan
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.3,
-        })
+      // Groq API kullan (proxy ile)
+      const groq = getGroqClient();
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.3,
       });
       
-      const data = await response.json();
-      const text = data.choices[0]?.message?.content || "";
+      const text = completion.choices[0]?.message?.content || "";
       const clean = text.replace(/```json|```/g, "").trim();
-      const result = JSON.parse(clean);
-      setSonuc(result);
+      const data = JSON.parse(clean);
+      setSonuc(data);
       
       // Geçmişe Kaydet
       if (kullanici) {
@@ -796,7 +802,7 @@ Lütfen SADECE JSON formatında yanıt ver:
           analizTur: analiz === "toprak" ? "Toprak" : analiz === "su" ? "Su" : "Hastalık",
           tarih: yeniTarih, 
           metin, 
-          sonuc: result 
+          sonuc: data 
         };
         const yeniGecmis = [kayit, ...gecmis];
         setGecmis(yeniGecmis);
@@ -806,9 +812,38 @@ Lütfen SADECE JSON formatında yanıt ver:
       
       setEkran("sonuc");
     } catch (err) {
-      console.error("API Hatası:", err);
-      setHata("AI hizmetleri şu an ulaşılabilir değil. Lütfen daha sonra tekrar deneyin.");
-      setEkran("anasayfa");
+      console.error("Groq Hatası:", err);
+      // Proxy çalışmazsa fallback
+      if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
+        try {
+          // Direkt fetch denemesi
+          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
+            },
+            body: JSON.stringify({
+              model: "llama-3.3-70b-versatile",
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.3,
+            })
+          });
+          
+          const data = await response.json();
+          const text = data.choices[0]?.message?.content || "";
+          const clean = text.replace(/```json|```/g, "").trim();
+          const result = JSON.parse(clean);
+          setSonuc(result);
+          setEkran("sonuc");
+        } catch (fallbackErr) {
+          setHata("Groq API'ye ulaşılamıyor. Lütfen internet bağlantınızı kontrol edin veya VPN deneyin.");
+          setEkran("anasayfa");
+        }
+      } else {
+        setHata("Analiz sırasında hata oluştu. Lütfen tekrar deneyin.");
+        setEkran("anasayfa");
+      }
     } finally {
       setYukleniyor(false);
     }
