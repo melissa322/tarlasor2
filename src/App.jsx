@@ -1,12 +1,20 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
 import Groq from "groq-sdk";
 import { supabase } from "./supabaseClient";
-import tarlaAi from "./assets/tarla_ai.png";
+// Background image'ı lazy load için
+const tarlaAi = "./assets/tarla_ai.png";
 
-const groq = new Groq({
-  apiKey: import.meta.env.VITE_GROQ_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
+// Groq client'ı singleton olarak tanımla
+let groqClient = null;
+const getGroqClient = () => {
+  if (!groqClient) {
+    groqClient = new Groq({
+      apiKey: import.meta.env.VITE_GROQ_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+  }
+  return groqClient;
+};
 
 const BOLGELER = {
   "Marmara": ["İstanbul", "Bursa", "Kocaeli", "Balıkesir", "Tekirdağ", "Çanakkale", "Edirne", "Kırklareli", "Sakarya", "Yalova", "Bilecik"],
@@ -18,8 +26,6 @@ const BOLGELER = {
   "Güneydoğu Anadolu": ["Gaziantep", "Şanlıurfa", "Diyarbakır", "Mardin", "Batman", "Adıyaman", "Siirt", "Kilis", "Şırnak"]
 };
 
-// Sehirleri alfabetik siralayalim
-const SEHIRLER = Object.keys(BOLGELER).reduce((acc, bolge) => [...acc, ...BOLGELER[bolge]], []).sort((a,b) => a.localeCompare(b, 'tr'));
 
 const getBolge = (sehir) => Object.keys(BOLGELER).find(b => BOLGELER[b].includes(sehir)) || "Bilinmiyor";
 
@@ -53,7 +59,12 @@ const historyKeyForUser = (email) => `tarlasor_gecmis_${normalizeEmail(email)}`;
 const forumKeyForUser = (email) => `tarlasor_forum_${normalizeEmail(email)}`;
 const sessionKey = "tarlasor_session";
 
-export default function App() {
+const App = memo(function App() {
+  // Sehirleri memoize edelim
+  const SEHIRLER = useMemo(() => 
+    Object.keys(BOLGELER).reduce((acc, bolge) => [...acc, ...BOLGELER[bolge]], []).sort((a,b) => a.localeCompare(b, 'tr')), []
+  );
+
   const [ekran, setEkran] = useState("loader"); // loader -> karsilama -> anasayfa -> giris -> yukleniyor -> sonuc | gecmis | forum
   const [kullanici, setKullanici] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
@@ -124,7 +135,7 @@ export default function App() {
         .from("forum_posts")
         .select("id, user_id, ad, sehir, bolge, gizli, metin, created_at")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(20); // 20'ye düşürdük
       if (error) {
         setForumMesajlari([]);
         return [];
@@ -774,7 +785,7 @@ Lütfen SADECE JSON formatında yanıt ver:
       let lastErr = null;
       for (let i = 0; i < attempts; i++) {
         try {
-          return await groq.chat.completions.create({
+          return await getGroqClient().chat.completions.create({
             messages: [{ role: "user", content: prompt }],
             model: "llama-3.3-70b-versatile",
             temperature: 0.3,
@@ -867,9 +878,9 @@ Lütfen SADECE JSON formatında yanıt ver:
     }
   };
 
-  const getSiraliForum = () => {
+  const getSiraliForum = useCallback(() => {
     return [...forumMesajlari].sort((a, b) => b.tarih - a.tarih);
-  };
+  }, [forumMesajlari]);
 
   const gunRiskleri = (g) => {
     const riskler = [];
@@ -886,13 +897,8 @@ Lütfen SADECE JSON formatında yanıt ver:
     return riskler.slice(0, 2);
   };
 
-  // STYLES
-  const durumRenk = (d) => d === "iyi" ? "#86efac" : d === "dikkat" ? "#fcd34d" : "#fca5a5";
-  const durumBg = (d) => d === "iyi" ? "rgba(134,239,172,0.15)" : d === "dikkat" ? "rgba(252,211,77,0.15)" : "rgba(252,165,165,0.15)";
-  const durumEmoji = (d) => d === "iyi" ? "✓" : d === "dikkat" ? "!" : "✕";
-  const durumYazi = (d) => d === "iyi" ? "İyi" : d === "dikkat" ? "Dikkat" : "Kritik";
-  
-  const s = {
+  // STYLES - Memoize edelim
+  const s = useMemo(() => ({
     app: { minHeight: "100vh", width: "100%", color: "#f5e6d3", fontFamily: "'Segoe UI', sans-serif", margin: 0, padding: 0 },
     sayfa: { maxWidth: 520, margin: "0 auto", padding: "32px 20px", paddingBottom: 60, minHeight: "100vh" },
     baslik: { fontSize: 38, fontWeight: 800, color: "#ffb450", margin: 0, letterSpacing: -1 },
@@ -908,7 +914,12 @@ Lütfen SADECE JSON formatında yanıt ver:
     btn: { width: "100%", padding: "14px", background: "linear-gradient(135deg, #d48b3a, #b8722e)", border: "none", borderRadius: 14, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", marginTop: 8 },
     btnSec: { width: "100%", padding: "14px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(212,139,58,0.3)", borderRadius: 14, color: "#f5e6d3", fontSize: 15, cursor: "pointer", marginTop: 10 },
     chipBtn: { padding: "6px 14px", background: "rgba(212,139,58,0.12)", border: "1px solid rgba(212,139,58,0.3)", borderRadius: 20, color: "#d4b896", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
-  };
+  }), []);
+
+  const durumRenk = useCallback((d) => d === "iyi" ? "#86efac" : d === "dikkat" ? "#fcd34d" : "#fca5a5", []);
+  const durumBg = useCallback((d) => d === "iyi" ? "rgba(134,239,172,0.15)" : d === "dikkat" ? "rgba(252,211,77,0.15)" : "rgba(252,165,165,0.15)", []);
+  const durumEmoji = useCallback((d) => d === "iyi" ? "✓" : d === "dikkat" ? "!" : "✕", []);
+  const durumYazi = useCallback((d) => d === "iyi" ? "İyi" : d === "dikkat" ? "Dikkat" : "Kritik", []);
 
   return (
     <div style={{ ...s.app, position: "relative" }}>
@@ -1614,4 +1625,6 @@ Lütfen SADECE JSON formatında yanıt ver:
       </div>
     </div>
   );
-}
+});
+
+export default App;
