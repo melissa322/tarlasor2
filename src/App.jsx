@@ -1,19 +1,43 @@
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
-import Groq from "groq-sdk";
+// import Groq from "groq-sdk"; // Geçici devre dışı
 import { supabase } from "./supabaseClient";
 // Background image'ı lazy load için
 const tarlaAi = "./assets/tarla_ai.png";
 
-// Groq client'ı singleton olarak tanımla
-let groqClient = null;
-const getGroqClient = () => {
-  if (!groqClient) {
-    groqClient = new Groq({
-      apiKey: import.meta.env.VITE_GROQ_API_KEY,
-      dangerouslyAllowBrowser: true,
-    });
+// Mock analiz fonksiyonu (Groq yerine)
+const mockAnaliz = (analiz, metin, labMetin) => {
+  if (analiz === "hastalik") {
+    return {
+      "genel_durum": "dikkat",
+      "genel_mesaj": "Belirtileriniz fungal enfeksiyonu işaret ediyor olabilir.",
+      "parametreler": [
+        {"ad": "Olası teşhis", "durum": "dikkat", "aciklama": "Yapraklarda sararma ve leklenme"},
+        {"ad": "Ayırıcı tanı", "durum": "dikkat", "aciklama": "Böcek zararı veya besin eksikliği"}
+      ],
+      "eylemler": [
+        "Acil adım: Etkilenen yaprakları temizle",
+        "Önleme: Havalandırmayı artır, sulama düzenle",
+        "İlaçsız: Süt suyu spreyi dene",
+        "Kimyasal: Bakır ilacı kullan",
+        "İzleme: 3 gün sonra kontrol et"
+      ]
+    };
+  } else {
+    return {
+      "genel_durum": "dikkat", 
+      "genel_mesaj": "Toprak pH değeri biraz yüksek görünüyor.",
+      "parametreler": [
+        {"ad": "pH", "durum": "dikkat", "aciklama": "7.5 - ideal 6.5-7.0 arası"},
+        {"ad": "Organik madde", "durum": "iyi", "aciklama": "Yeterli seviyede"}
+      ],
+      "eylemler": [
+        "Acil: Turba veya kompost ekle",
+        "Düzeltme: 2-3 hafta içinde tekrar test et", 
+        "Önleme: Organik gübre kullanmaya devam",
+        "Takip: pH değerini ayda bir kontrol et"
+      ]
+    };
   }
-  return groqClient;
 };
 
 const BOLGELER = {
@@ -802,10 +826,8 @@ Lütfen SADECE JSON formatında yanıt ver:
     };
 
     try {
-      const completion = await groqCreateWithRetry();
-      const text = completion.choices[0]?.message?.content || "";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const data = JSON.parse(clean);
+      // Mock analiz kullan (Groq yerine)
+      const data = mockAnaliz(analiz, metin, labMetin);
       setSonuc(data);
       
       // Geçmişe Kaydet
@@ -826,9 +848,9 @@ Lütfen SADECE JSON formatında yanıt ver:
       
       setEkran("sonuc");
     } catch (err) {
-      console.error("API Hatası:", err);
-      setHata("Bağlantı sorunu oluştu. İnternetinizi kontrol edip tekrar deneyin. Sorun devam ederse VPN/proxy kapatıp deneyin.");
-      setEkran("giris");
+      console.error("Analiz Hatası:", err);
+      setHata("Analiz sırasında hata oluştu. Lütfen tekrar deneyin.");
+      setEkran("anasayfa");
     } finally {
       setYukleniyor(false);
     }
