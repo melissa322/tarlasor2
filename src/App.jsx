@@ -784,22 +784,17 @@ Lütfen SADECE JSON formatında yanıt ver:
 
     
     try {
-      // Mock analiz data kullan (test için)
-      const mockData = {
-        "genel_durum": "dikkat",
-        "genel_mesaj": "Test analizi tamamlandı. Bu bir örnek sonuçtur.",
-        "parametreler": [
-          {"ad": "Test Parametresi", "durum": "iyi", "aciklama": "Bu bir test değeridir"},
-          {"ad": "Diğer Test", "durum": "dikkat", "aciklama": "Test amaçlı"}
-        ],
-        "eylemler": [
-          "Test adımı 1: Analiz başarılı",
-          "Test adımı 2: Sonuçlar görüntülendi",
-          "Test adımı 3: Düzeltme butonu aktif"
-        ]
-      };
+      // Gerçek AI analizi yap
+      const groq = getGroqClient();
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.3,
+      });
       
-      const data = mockData;
+      const text = completion.choices[0]?.message?.content || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const data = JSON.parse(clean);
       setSonuc(data);
       
       // Geçmişe Kaydet
