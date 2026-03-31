@@ -4,15 +4,10 @@ import { supabase } from "./supabaseClient";
 // Background image'ı lazy load için
 const tarlaAi = "./assets/tarla_ai.png";
 
-// Groq client'ı proxy ile tanımla
 const getGroqClient = () => {
   return new Groq({
     apiKey: import.meta.env.VITE_GROQ_API_KEY,
-    dangerouslyAllowBrowser: true,
-    // CORS proxy kullanarak Türkiye'de çalışacak
-    baseURL: import.meta.env.DEV ? 
-      undefined : 
-      'https://cors-anywhere.herokuapp.com/https://api.groq.com/openai/v1'
+    dangerouslyAllowBrowser: true
   });
 };
 
